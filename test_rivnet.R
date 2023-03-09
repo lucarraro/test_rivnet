@@ -10,14 +10,14 @@ library(terra)
 
 # FIG 2 ####
 rivers <- read.csv("rivers4.csv")
-pdf("Fig2.pdf", width = 21/254, height = 12/2.54)
+pdf("Fig2.pdf", width = 21/2.54, height = 12/2.54)
 par(mfrow=c(1,2))
 river <- rivnet::extract_river(outlet = c(rivers$x_outlet[1], rivers$y_outlet[1]),
                                EPSG = rivers$EPSG[1],
                                ext = c(rivers$x_ll[1], rivers$x_tr[1], rivers$y_ll[1], rivers$y_tr[1]),
                                z = rivers$zoom[1],
                                displayUpdates = 0,
-                               plot.rast = TRUE)
+                               showPlot = TRUE)
 river <- rivnet::aggregate_river(river, thrA = 1e6)
 locate_site(410000, 5200000, river, showPlot = TRUE)
 dev.off()
@@ -30,90 +30,93 @@ if (!file.exists("results_4rivers.rda")){
   out_PA <- list(length(rivers$Name))
   out_dA <- list(length(rivers$Name))
   river_polygons <- list(length(rivers$Name))
-  
+
   for (i in 1:length(rivers$Name)){
     river <- rivnet::extract_river(outlet = c(rivers$x_outlet[i], rivers$y_outlet[i]),
                                    EPSG = rivers$EPSG[i],
                                    ext = c(rivers$x_ll[i], rivers$x_tr[i], rivers$y_ll[i], rivers$y_tr[i]),
                                    z = rivers$zoom[i],
                                    displayUpdates = 1,
-                                   plot.rast = TRUE)
+                                   showPlot = TRUE)
     river <- rivnet::aggregate_river(river, thrA = 1e6, displayUpdates = 1)
     river <- rivnet::paths_river(river, level = "AG", displayUpdates = 1)
-    
+
     river_polygons[[i]] <- Polygon(cbind(river$CM$XContour[[1]][[1]], river$CM$YContour[[1]][[1]]))
-    
+
     # max length upstream
     channelHeads <- which(river$AG$nUpstream==1) # find headwaters
     L <- Lhead <- numeric(river$AG$nNodes)
-    for (j in channelHeads){ Lhead[j] <- max(sqrt((river$FD$X[river$SC$toFD[[j]]] - river$AG$X[j])^2 + 
+    for (j in channelHeads){ Lhead[j] <- max(sqrt((river$FD$X[river$SC$toFD[[j]]] - river$AG$X[j])^2 +
                                                     (river$FD$Y[river$SC$toFD[[j]]] - river$AG$Y[j])^2))}
-    
+
     for (j in 1:river$AG$nNodes){ # add Lhead only to sources upstream of j
       if (!(j %in% channelHeads)){L[j] <- max(river$AG$downstreamPathLength[,j] + Lhead*(river$AG$downstreamPathLength[,j]>0))}}
-    
+
     L <- L[-channelHeads] # only pick confluences
     A <- river$AG$A[-channelHeads]
-    
+
     out_L[[i]] <- L
     out_A[[i]] <- A
-    
+
     # probability of aggregation
     dA <- sort(unique(unique(river$FD$A)))
     PA <- numeric(length(dA))
     for (j in 1:length(dA)){PA[j] <- sum(river$FD$A>=dA[j])/river$FD$nNodes }
-    
+
     out_PA[[i]] <- PA
     out_dA[[i]] <- dA
-    
-    save(out_L,out_A,out_PA,out_dA,file="results_4rivers.rda")
-    
+
+    save(out_L,out_A,out_PA,out_dA,river_polygons,file="results_4rivers.rda")
+
   }} else {(load("results_4rivers.rda"))}
 
 
 kol <- hcl.colors(4,"PiYG")
 
 pdf("Fig3.pdf", width = 21/2.54, height = 12/2.54)
+h_values <- numeric(4)
 par(mfrow = c(1,2))
 # Hack's law plot
 for (i in seq(4,1,-1)){
   L <- out_L[[i]]; A <- out_A[[i]]
   if (i==4){
-    plot(A/1e6, L/1e3, col = kol[i], pch = 19, cex = 0.4,log = "xy", 
+    plot(A/1e6, L/1e3, col = kol[i], pch = 19, cex = 0.4,log = "xy",
          xlab = "A [km2]", ylab = "L [km]", xlim = c(1, 1e4), ylim = c(1, 200))
   } else {points(A/1e6, L/1e3, col = kol[i], pch = 19, cex = 0.4)}
   lmod <- lm(log(L/1e3) ~ log(A/1e6))
-  ss <- summary(lmod); ss4 <- ss$coefficients[2,1]
+  ss <- summary(lmod); h_values[i] <- ss$coefficients[2,1]
   xx <- pracma::logspace(log10(min(A/1e6)), log10(max(A/1e6)), 20)
   lines(xx, exp(ss$coefficients[1,1])*xx^ss$coefficients[2,1], col = kol[4], lwd = 0.5)
 }
-legend(1, 200, legend = c(sprintf("Ilfis  -  h = % .3f",ss1),
-                          sprintf("Toss  -  h = % .3f", ss2),
-                          sprintf("Inn  -  h = % .3f", ss3),
-                          sprintf("Rhone  -  h = % .3f", ss4)),
+legend(1, 200, legend = c(sprintf("Ilfis  -  h = % .3f",h_values[1]),
+                          sprintf("Toss  -  h = % .3f", h_values[2]),
+                          sprintf("Inn  -  h = % .3f", h_values[3]),
+                          sprintf("Rhone  -  h = % .3f", h_values[4])),
        col = kol, pch = 19, text.font = 1, pt.cex = 0.5)
 
 # scaling of drainage areas
 cex_vec <- seq(0.2, 0.8, 0.2); thr <- 0.025
+beta_values <- numeric(4)
 for (i in seq(4,1,-1)){
   dA <- out_dA[[i]]; PA <- out_PA[[i]]
   if (i==4){
-    plot(dA/1e6, PA, col = kol[i], pch = 19, cex = cev_vec[i], log = "xy",
+    plot(dA/1e6, PA, col = kol[i], pch = 19, cex = cex_vec[i], log = "xy",
          xlim = c(1e-4, 1e4), ylim = c(1e-8, 2), xlab = "a [km2]", ylab = "P[A >= a]")
   } else {points(dA/1e6, PA, col = kol[i], pch = 19, cex = cex_vec[i])}
   lmod <- lm(log(PA[dA <= thr*max(dA)]) ~ log(dA[dA <= thr*max(dA)]/1e6)) # cutoff: 5% of max A
-  ss<- summary(lmod); ss4 <- ss$coefficients[2,1]
+  ss<- summary(lmod); beta_values[i] <- ss$coefficients[2,1]
   xx <- pracma::logspace(log10(min(dA/1e6)), log10(max(dA/1e6)), 20)
   lines(xx, exp(ss$coefficients[1,1])*xx^ss$coefficients[2,1], col = kol[4], lwd = 0.5)
 }
-legend(1e-3, 1e-3, legend = c(sprintf("Ilfis  -  beta = % .3f",-ss1),
-                              sprintf("Toss  -  beta = % .3f", -ss2),
-                              sprintf("Inn  -  beta = % .3f", -ss3),
-                              sprintf("Rhone  -  beta = % .3f", -ss4)),
+legend(1e-3, 1e-3, legend = c(sprintf("Ilfis  -  beta = % .3f",-beta_values[1]),
+                              sprintf("Toss  -  beta = % .3f", -beta_values[2]),
+                              sprintf("Inn  -  beta = % .3f", -beta_values[3]),
+                              sprintf("Rhone  -  beta = % .3f", -beta_values[4])),
        col = kol, pch = 19, text.font = 1, pt.cex = cex_vec)
 dev.off()
 
 # MAP FIGURE
+pdf("Fig3_inset.pdf", width = 21/2.54, height = 12/2.54)
 CH <- ne_countries(10, country = "Switzerland")
 plot(CH)
 for (i in 1:length(rivers$Name)){
@@ -132,9 +135,10 @@ ps <- Polygons(list(Thur_polygon),1)
 xy <- SpatialPolygons(list(ps), proj4string = CRS(paste0("+init=epsg:23032")))
 XY <- spTransform(xy, CRS("+init=epsg:4326"))
 plot(XY, add = T,col = "grey50")
-abline(h = seq(46, 47.5, 0.5), v = 6:10, col = "grey90")
+#abline(h = seq(46, 47.5, 0.5), v = 6:10, col = "grey90")
 
 legend(x = 6, y = 48, legend = c(rivers$Name, "Thur"), fill = c(kol,"grey50"))
+dev.off()
 
 # FIGURE 4 ####
 Thur <- rivnet::extract_river(outlet = c(735010, 261530),
@@ -151,7 +155,7 @@ hydroSites <- data.frame(x = c(723675, 718840, 727110, 737270),
 widthObs <- c(35, 2.5, 20, 8) # estimated from aerial images
 QObs <- c(19.96, 0.099, 3.195, 0.516) # mean values during 2012-2021
 
-# locate hydrological stations to AG nodes. Use showPlot to visually inspect if attribution is correct 
+# locate hydrological stations to AG nodes. Use showPlot to visually inspect if attribution is correct
 hydroAG <- numeric(length(hydroSites$x))
 for (i in 1:length(hydroSites$x)){
   tmp <- rivnet::locate_site(hydroSites$x[i], hydroSites$y[i], Thur, showPlot = TRUE)
@@ -163,8 +167,8 @@ upNodes <- which(Thur$AG$downNode==hydroAG[3])
 hydroAG[3] <- upNodes[which.max(Thur$AG$A[upNodes])] # pick largest upstream reach
 
 # assign hydraulic variables via hydro_river
-hData <- c(widthObs, QObs) 
-hType <- c(rep("w", length(widthObs)), rep("Q", length(QObs))) 
+hData <- c(widthObs, QObs)
+hType <- c(rep("w", length(widthObs)), rep("Q", length(QObs)))
 hNode <- c(rep(hydroAG,2))
 Thur <- rivnet::hydro_river(data.frame(data = hData, type = hType, node = hNode),
                             Thur,
@@ -231,7 +235,7 @@ title ("Elevation [m a.s.l.]")
 kols <- hcl.colors(1000, "viridis", rev = T)
 log_phi_diffuse <- log10(phi_diffuse)
 log_phi_diffuse[log_phi_diffuse==-Inf] <- NaN
-plot(log_phi_diffuse, Thur, type = "SC", 
+plot(log_phi_diffuse, Thur, type = "SC",
      riverColor = "white", colPalette = kols,
      colLevels = c(4,7), min_lwd = 0.2, max_lwd = 2)
 points(ARAsites$X, ARAsites$Y,
