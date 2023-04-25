@@ -1,6 +1,6 @@
 # test_rivnet ####
 # Scripts supporting Carraro, L., "Seamless extraction and analysis of river networks in R:  the rivnet package"
-# NOTE: to produce Fig. 4, you need to download the landcover map of Switzerland (see lines 183-184)
+# NOTE: to produce Fig. 5, you need to download the landcover map of Switzerland (see lines 229-230)
 
 rm(list=ls())
 library(rivnet)
@@ -30,16 +30,24 @@ if (!file.exists("results_4rivers.rda")){
   out_PA <- list(length(rivers$Name))
   out_dA <- list(length(rivers$Name))
   river_polygons <- list(length(rivers$Name))
-
+  computationalTime <- matrix(0,5,4)
+  cell_ratio <- no_cells <- numeric(4)
   for (i in 1:length(rivers$Name)){
+    t0 <- Sys.time()
     river <- rivnet::extract_river(outlet = c(rivers$x_outlet[i], rivers$y_outlet[i]),
                                    EPSG = rivers$EPSG[i],
                                    ext = c(rivers$x_ll[i], rivers$x_tr[i], rivers$y_ll[i], rivers$y_tr[i]),
                                    z = rivers$zoom[i],
                                    displayUpdates = 1,
+                                   n_processes = 8,
                                    showPlot = TRUE)
+    no_cells[i] <- river$FD$nNodes
+    cell_ratio[i] <- river$FD$nNodes/river$dimX/river$dimY
+    t1 <- Sys.time()
     river <- rivnet::aggregate_river(river, thrA = 1e6, displayUpdates = 1)
+    t2 <- Sys.time()
     river <- rivnet::paths_river(river, level = "AG", displayUpdates = 1)
+    t3 <- Sys.time()
 
     river_polygons[[i]] <- Polygon(cbind(river$CM$XContour[[1]][[1]], river$CM$YContour[[1]][[1]]))
 
@@ -58,6 +66,8 @@ if (!file.exists("results_4rivers.rda")){
     out_L[[i]] <- L
     out_A[[i]] <- A
 
+    t4 <- Sys.time()
+
     # probability of aggregation
     dA <- sort(unique(unique(river$FD$A)))
     PA <- numeric(length(dA))
@@ -65,8 +75,15 @@ if (!file.exists("results_4rivers.rda")){
 
     out_PA[[i]] <- PA
     out_dA[[i]] <- dA
-
-    save(out_L,out_A,out_PA,out_dA,river_polygons,file="results_4rivers.rda")
+    t5 <- Sys.time()
+    computationalTime[1, i] <- difftime(t1,t0,unit="secs")
+    computationalTime[2, i] <- difftime(t2,t1,unit="secs")
+    computationalTime[3, i] <- difftime(t3,t2,unit="secs")
+    computationalTime[4, i] <- difftime(t4,t3,unit="secs")
+    computationalTime[5, i] <- difftime(t5,t4,unit="secs")
+    save(out_L,out_A,out_PA,out_dA,river_polygons,computationalTime,
+         no_cells,cell_ratio,
+         file="results_4rivers.rda")
 
   }} else {(load("results_4rivers.rda"))}
 
@@ -141,6 +158,31 @@ legend(x = 6, y = 48, legend = c(rivers$Name, "Thur"), fill = c(kol,"grey50"))
 dev.off()
 
 # FIGURE 4 ####
+time_breakdown <- read.csv("times.csv")
+time_elevatr <- matrix(as.numeric(time_breakdown[1,2:21]),ncol=4,nrow=5,byrow=TRUE)
+time_tauDEM <- matrix(as.numeric(time_breakdown[2,2:21]),ncol=4,nrow=5,byrow=TRUE)
+time_extract <- matrix(as.numeric(time_breakdown[3,2:21]),ncol=4,nrow=5,byrow=TRUE)
+time_aggregate <- matrix(as.numeric(time_breakdown[4,2:21]),ncol=4,nrow=5,byrow=TRUE)
+time_paths <- matrix(as.numeric(time_breakdown[5,2:21]),ncol=4,nrow=5,byrow=TRUE)
+
+tot_time <- (colMeans(time_elevatr)+colMeans(time_tauDEM)+
+               colMeans(time_extract)+colMeans(time_aggregate)+colMeans(time_paths))
+
+breakdown <- rbind(colMeans(time_elevatr),colMeans(time_tauDEM),
+                   colMeans(time_extract),colMeans(time_aggregate),colMeans(time_paths))
+for (i in 1:length(tot_time)) breakdown[,i] <- breakdown[,i]/tot_time[i]
+
+pdf("Fig4.pdf", width = 21/2.54, height = 10/2.54)
+kols <- hcl.colors(5,"Zissou 1")
+par(mfrow=c(1,2))
+plot(no_cells,tot_time,log="x", ylim=c(0,60),xlim=c(5e4,2e6),
+     bty="n",xaxt="n",yaxt="n",type="b",pch=19,ylab="Time [s]",xlab="Number of cells")
+axis(1,pos=0); axis(2,pos=5e4)
+barplot(breakdown,col=kols,names.arg=c("Ilfis","Toss","Inn","Rhone"))
+dev.off()
+
+
+# FIGURE 5 ####
 Thur <- rivnet::extract_river(outlet = c(735010, 261530),
                               EPSG = 21781,
                               ext = c(700000, 770000, 220000, 270000),
@@ -222,7 +264,7 @@ for (i in 1:Thur$AG$nNodes){
 }
 
 # draw figure
-pdf("Fig4.pdf", width = 21/2.54, height = 12/2.54)
+pdf("Fig5.pdf", width = 21/2.54, height = 12/2.54)
 par(mfrow = c(1,3))
 kol <- colorRampPalette(c("chartreuse3", "darkgoldenrod1", "chocolate", "gray80", "gray90"))
 plot(Thur, type = "elev2D", colPalette = kol(1000),
