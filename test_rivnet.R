@@ -12,12 +12,19 @@ library(terra)
 rivers <- read.csv("rivers4.csv")
 pdf("Fig2.pdf", width = 21/2.54, height = 12/2.54)
 par(mfrow=c(1,2))
+# extract river with reduced zoom to show plot (river lines appear thicker)
+river <- rivnet::extract_river(outlet = c(rivers$x_outlet[1], rivers$y_outlet[1]),
+                               EPSG = rivers$EPSG[1],
+                               ext = c(rivers$x_ll[1], rivers$x_tr[1], rivers$y_ll[1], rivers$y_tr[1]),
+                               z = rivers$zoom[1] - 1,
+                               displayUpdates = 0,
+                               showPlot = TRUE)
+# extract same river with higher resolution to show functioning of locate_site
 river <- rivnet::extract_river(outlet = c(rivers$x_outlet[1], rivers$y_outlet[1]),
                                EPSG = rivers$EPSG[1],
                                ext = c(rivers$x_ll[1], rivers$x_tr[1], rivers$y_ll[1], rivers$y_tr[1]),
                                z = rivers$zoom[1],
-                               displayUpdates = 0,
-                               showPlot = TRUE)
+                               displayUpdates = 0)
 river <- rivnet::aggregate_river(river, thrA = 1e6)
 locate_site(410000, 5200000, river, showPlot = TRUE)
 dev.off()
@@ -135,7 +142,9 @@ dev.off()
 # MAP FIGURE
 pdf("Fig3_inset.pdf", width = 21/2.54, height = 12/2.54)
 CH <- ne_countries(10, country = "Switzerland")
-plot(CH)
+multicountry <- ne_countries(10, country = c("Switzerland",'Italy',"France","Germany","Austria"))
+plot(multicountry, xlim=bbox(CH)[1,], ylim=bbox(CH)[2,])
+abline(h=c(46,46.5,47,47.5), v=c(6,8,10),col="gray80")
 for (i in 1:length(rivers$Name)){
   ps <- Polygons(list(river_polygons[[i]]), 1)
   xy <- SpatialPolygons(list(ps), proj4string = CRS(paste0("+init=epsg:23032")))
