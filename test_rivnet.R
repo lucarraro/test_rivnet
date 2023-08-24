@@ -1,9 +1,9 @@
 # test_rivnet ####
 # Scripts supporting Carraro, L., "Seamless extraction and analysis of river networks in R:  the rivnet package"
-# NOTE: to produce Fig. 5, you need to download the landcover map of Switzerland (see lines 229-230)
+# NOTE: to produce Fig. 5, you need to download the landcover map of Switzerland (see lines 238-239)
 
 rm(list=ls())
-library(rivnet)
+library(rivnet) # rivnet >=0.3.0 must be used
 library(sp)
 library(rnaturalearth)
 library(terra)
